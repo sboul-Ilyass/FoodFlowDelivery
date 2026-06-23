@@ -32,12 +32,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  adminCreateUser,
-  adminDeleteUser,
-  adminListUsers,
-  adminUpdateUser,
-} from "@/lib/admin.functions";
+import { supabase } from "@/integrations/supabase/client";
+import { adminListUsers } from "@/lib/admin.functions";
 import { toast } from "sonner";
 import { Plus, Pencil } from "lucide-react";
 
@@ -50,11 +46,26 @@ type Role = "MERCHANT" | "COURIER" | "ADMIN";
 function AdminUsers() {
   const qc = useQueryClient();
   const listUsers = useServerFn(adminListUsers);
-  const createUser = useServerFn(adminCreateUser);
-  const updateUser = useServerFn(adminUpdateUser);
-  const deleteUser = useServerFn(adminDeleteUser);
 
   const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: () => listUsers() });
+
+  const executeUserMutation = async (method: "POST" | "PUT" | "DELETE", payload: any) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const res = await fetch("/api/admin/users", {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || "Request failed");
+    }
+    return await res.json();
+  };
 
   const [openCreate, setOpenCreate] = useState(false);
   const [editing, setEditing] = useState<null | {
@@ -76,7 +87,7 @@ function AdminUsers() {
           <CreateUserDialog
             onCreate={async (payload) => {
               try {
-                await createUser(payload);
+                await executeUserMutation("POST", payload);
                 toast.success("User created");
                 setOpenCreate(false);
                 refresh();
@@ -139,7 +150,7 @@ function AdminUsers() {
                         <AlertDialogAction
                           onClick={async () => {
                             try {
-                              await deleteUser({ id: u.id });
+                              await executeUserMutation("DELETE", { id: u.id });
                               toast.success("User deleted");
                               refresh();
                             } catch (e: any) {
@@ -168,7 +179,7 @@ function AdminUsers() {
             initial={editing}
             onSave={async (payload) => {
               try {
-                await updateUser(payload);
+                await executeUserMutation("PUT", payload);
                 toast.success("Updated");
                 setEditing(null);
                 refresh();
@@ -192,15 +203,57 @@ function CreateUserDialog({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("MERCHANT");
+  const [errors, setErrors] = useState<{ name?: string; email?: string; password?: string }>({});
+
+  const handleCreate = () => {
+    const newErrors: typeof errors = {};
+    if (!name.trim()) {
+      newErrors.name = "required";
+    }
+    if (!email.trim()) {
+      newErrors.email = "required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = "wrong format";
+    }
+    if (!password) {
+      newErrors.password = "required";
+    } else if (password.length < 6) {
+      newErrors.password = "must be at least 6 characters";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setErrors({});
+    onCreate({ name: name.trim(), email: email.trim(), password, role });
+  };
+
   return (
     <DialogContent>
       <DialogHeader>
         <DialogTitle>Create user</DialogTitle>
       </DialogHeader>
       <div className="space-y-3">
-        <Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label="Email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
-        <Field label="Password"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+        <Field label="Name" error={errors.name}>
+          <Input value={name} onChange={(e) => {
+            setName(e.target.value);
+            if (errors.name) setErrors(prev => ({ ...prev, name: undefined }));
+          }} />
+        </Field>
+        <Field label="Email" error={errors.email}>
+          <Input type="email" value={email} onChange={(e) => {
+            setEmail(e.target.value);
+            if (errors.email) setErrors(prev => ({ ...prev, email: undefined }));
+          }} />
+        </Field>
+        <Field label="Password" error={errors.password}>
+          <Input type="password" value={password} onChange={(e) => {
+            setPassword(e.target.value);
+            if (errors.password) setErrors(prev => ({ ...prev, password: undefined }));
+          }} />
+        </Field>
         <Field label="Role">
           <Select value={role} onValueChange={(v) => setRole(v as Role)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -213,7 +266,7 @@ function CreateUserDialog({
         </Field>
       </div>
       <DialogFooter>
-        <Button onClick={() => onCreate({ name, email, password, role })}>Create</Button>
+        <Button onClick={handleCreate}>Create</Button>
       </DialogFooter>
     </DialogContent>
   );
@@ -229,14 +282,41 @@ function EditUserDialog({
   const [name, setName] = useState(initial.name);
   const [role, setRole] = useState<Role>(initial.role);
   const [password, setPassword] = useState("");
+  const [errors, setErrors] = useState<{ name?: string; password?: string }>({});
+
+  const handleSave = () => {
+    const newErrors: typeof errors = {};
+    if (!name.trim()) {
+      newErrors.name = "required";
+    }
+    if (password && password.length < 6) {
+      newErrors.password = "must be at least 6 characters";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setErrors({});
+    onSave({ id: initial.id, name: name.trim(), role, password: password || undefined });
+  };
+
   return (
     <DialogContent>
       <DialogHeader>
         <DialogTitle>Edit user</DialogTitle>
       </DialogHeader>
       <div className="space-y-3">
-        <Field label="Name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label="Email"><Input value={initial.email} disabled /></Field>
+        <Field label="Name" error={errors.name}>
+          <Input value={name} onChange={(e) => {
+            setName(e.target.value);
+            if (errors.name) setErrors(prev => ({ ...prev, name: undefined }));
+          }} />
+        </Field>
+        <Field label="Email">
+          <Input value={initial.email} disabled />
+        </Field>
         <Field label="Role">
           <Select value={role} onValueChange={(v) => setRole(v as Role)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -247,23 +327,27 @@ function EditUserDialog({
             </SelectContent>
           </Select>
         </Field>
-        <Field label="New password (optional)">
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Leave blank to keep" />
+        <Field label="New password (optional)" error={errors.password}>
+          <Input type="password" value={password} onChange={(e) => {
+            setPassword(e.target.value);
+            if (errors.password) setErrors(prev => ({ ...prev, password: undefined }));
+          }} placeholder="Leave blank to keep" />
         </Field>
       </div>
       <DialogFooter>
-        <Button onClick={() => onSave({ id: initial.id, name, role, password: password || undefined })}>
-          Save
-        </Button>
+        <Button onClick={handleSave}>Save</Button>
       </DialogFooter>
     </DialogContent>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
+      <div className="flex justify-between items-center">
+        <Label>{label}</Label>
+        {error && <span className="text-xs text-destructive font-medium">{error}</span>}
+      </div>
       {children}
     </div>
   );

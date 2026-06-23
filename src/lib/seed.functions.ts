@@ -1,3 +1,5 @@
+"use server";
+
 import { createServerFn } from "@tanstack/react-start";
 
 const DEMO_USERS = [

@@ -72,7 +72,7 @@ function AdminOrders() {
 
   const assign = async (orderId: string, courierId: string | null) => {
     try {
-      await assignCourier({ orderId, courierId });
+      await assignCourier({ data: { orderId, courierId } });
       toast.success("Updated");
       qc.invalidateQueries({ queryKey: ["all-orders"] });
     } catch (e: any) {

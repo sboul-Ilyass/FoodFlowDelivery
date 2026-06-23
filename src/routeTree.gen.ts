@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedMerchantIndexRouteImport } from './routes/_authenticated/merchant.index'
 import { Route as AuthenticatedCourierIndexRouteImport } from './routes/_authenticated/courier.index'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin.index'
+import { Route as ApiAdminUsersRouteImport } from './routes/api.admin.users'
 import { Route as AuthenticatedMerchantNewRouteImport } from './routes/_authenticated/merchant.new'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
 import { Route as AuthenticatedAdminOrdersRouteImport } from './routes/_authenticated/admin.orders'
@@ -50,6 +51,11 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/admin/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiAdminUsersRoute = ApiAdminUsersRouteImport.update({
+  id: '/api/admin/users',
+  path: '/api/admin/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedMerchantNewRoute =
   AuthenticatedMerchantNewRouteImport.update({
     id: '/merchant/new',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/admin/orders': typeof AuthenticatedAdminOrdersRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/merchant/new': typeof AuthenticatedMerchantNewRoute
+  '/api/admin/users': typeof ApiAdminUsersRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/courier/': typeof AuthenticatedCourierIndexRoute
   '/merchant/': typeof AuthenticatedMerchantIndexRoute
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/admin/orders': typeof AuthenticatedAdminOrdersRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/merchant/new': typeof AuthenticatedMerchantNewRoute
+  '/api/admin/users': typeof ApiAdminUsersRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/courier': typeof AuthenticatedCourierIndexRoute
   '/merchant': typeof AuthenticatedMerchantIndexRoute
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/orders': typeof AuthenticatedAdminOrdersRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/merchant/new': typeof AuthenticatedMerchantNewRoute
+  '/api/admin/users': typeof ApiAdminUsersRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/courier/': typeof AuthenticatedCourierIndexRoute
   '/_authenticated/merchant/': typeof AuthenticatedMerchantIndexRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/admin/orders'
     | '/admin/users'
     | '/merchant/new'
+    | '/api/admin/users'
     | '/admin/'
     | '/courier/'
     | '/merchant/'
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/admin/orders'
     | '/admin/users'
     | '/merchant/new'
+    | '/api/admin/users'
     | '/admin'
     | '/courier'
     | '/merchant'
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/orders'
     | '/_authenticated/admin/users'
     | '/_authenticated/merchant/new'
+    | '/api/admin/users'
     | '/_authenticated/admin/'
     | '/_authenticated/courier/'
     | '/_authenticated/merchant/'
@@ -138,6 +150,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ApiAdminUsersRoute: typeof ApiAdminUsersRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -183,6 +196,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/'
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/api/admin/users': {
+      id: '/api/admin/users'
+      path: '/api/admin/users'
+      fullPath: '/api/admin/users'
+      preLoaderRoute: typeof ApiAdminUsersRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/merchant/new': {
       id: '/_authenticated/merchant/new'
@@ -233,6 +253,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ApiAdminUsersRoute: ApiAdminUsersRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
