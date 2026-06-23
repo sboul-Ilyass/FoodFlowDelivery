@@ -164,3 +164,28 @@ This project is built on Lovable Cloud and can be published directly from the Lo
 ## License
 
 MIT — see `LICENSE`.
+
+---
+
+## Client Setup Instructions
+
+To run this application locally for testing:
+
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Configure environment variables**:
+   Create a `.env` file in the root directory. Paste the Supabase connection keys provided by the project administrator. A template of the required variables is available in `.env.example`.
+
+3. **Run the development server**:
+   ```bash
+   npm run dev
+   ```
+
+4. **Log in using the default demo accounts**:
+   * **Administrator**: `admin@example.com` / `admin123`
+   * **Merchant**: `merchant@example.com` / `merchant123`
+   * **Courier**: `courier@example.com` / `courier123`
+
