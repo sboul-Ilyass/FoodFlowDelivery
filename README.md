@@ -1,13 +1,3 @@
-# Online Food Delivery System
-
-A modern, role-based web application for managing food delivery operations between merchants and couriers, with an administrator overseeing the workflow. Built as an academic assignment.
-
-## Project Description
-
-This system coordinates delivery operations for a single restaurant. Merchants create delivery orders for predefined customer addresses; couriers accept one or more orders and receive an optimized delivery route based on a simulated travel-time map; administrators manage users and orders. There is no customer-facing interface — customers are represented as 8 predefined addresses.
-
----
-
 ## Client Setup Instructions
 
 To run this application locally for testing:
@@ -142,19 +132,3 @@ The courier dashboard runs a **nearest-neighbor algorithm** over the predefined 
 - **Admin Dashboard** — aggregate metrics across users and orders.
 - **Admin Orders** — full orders table with inline courier-assignment and delete.
 - **Admin Users** — CRUD on merchant / courier / admin accounts with modal forms.
-
----
-
-## Deployment
-
-This project is built on Lovable Cloud and can be published directly from the Lovable interface. For a standalone deployment:
-
-1. Configure Supabase environment variables in your hosting provider.
-2. Run `npm run build`.
-3. Deploy the `dist/` output (or use Cloudflare Workers via the included Nitro config).
-
----
-
-## License
-
-MIT — see `LICENSE`.
