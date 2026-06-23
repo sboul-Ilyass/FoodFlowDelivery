@@ -12,10 +12,11 @@ export const seedDemoUsers = createServerFn({ method: "POST" }).handler(async ()
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const results: Array<{ email: string; status: string }> = [];
 
+  // Fetch all users once before the loop to avoid N+1 listUsers calls
+  const { data: userList } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
+
   for (const u of DEMO_USERS) {
-    // Find existing
-    const { data: list } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
-    const existing = list?.users.find((x) => x.email === u.email);
+    const existing = userList?.users.find((x) => x.email === u.email);
     let userId = existing?.id;
     if (!existing) {
       const { data, error } = await supabaseAdmin.auth.admin.createUser({
@@ -43,19 +44,18 @@ export const seedDemoUsers = createServerFn({ method: "POST" }).handler(async ()
 
 export const autoSeedIfEmpty = createServerFn({ method: "POST" }).handler(async () => {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  
-  // List users to check if the table is empty
-  const { data: list, error: listError } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1 });
+
+  // Fetch users once — reused both for the empty check and for the seed loop
+  const { data: list, error: listError } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
   if (listError) {
     console.error("Error listing users for auto-seed check:", listError);
     return { status: "error", message: listError.message };
   }
 
-  // Check if user_roles is empty
   const { count: rolesCount, error: rolesError } = await supabaseAdmin
     .from("user_roles")
     .select("*", { count: "exact", head: true });
-  
+
   if (rolesError) {
     console.error("Error checking user_roles count:", rolesError);
   }
@@ -63,15 +63,13 @@ export const autoSeedIfEmpty = createServerFn({ method: "POST" }).handler(async 
   const isAuthEmpty = !list?.users || list.users.length === 0;
   const isRolesEmpty = rolesCount === 0;
 
-  // If there are no users, OR there are no roles assigned to any user, run the seeding to ensure everything is set up
   if (isAuthEmpty || isRolesEmpty) {
     console.log(`Auto-seeding triggered: isAuthEmpty=${isAuthEmpty}, isRolesEmpty=${isRolesEmpty}`);
     const results: Array<{ email: string; status: string }> = [];
 
     for (const u of DEMO_USERS) {
-      // Find existing
-      const { data: userList } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
-      const existing = userList?.users.find((x) => x.email === u.email);
+      // Reuse the already-fetched user list — no extra listUsers calls inside the loop
+      const existing = list?.users.find((x) => x.email === u.email);
       let userId = existing?.id;
 
       if (!existing) {
@@ -101,5 +99,3 @@ export const autoSeedIfEmpty = createServerFn({ method: "POST" }).handler(async 
 
   return { status: "skipped", message: "Users and roles tables are not empty" };
 });
-
-

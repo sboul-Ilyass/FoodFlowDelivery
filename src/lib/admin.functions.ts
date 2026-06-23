@@ -73,11 +73,25 @@ export const adminUpdateUser = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await supabaseAdmin.from("profiles").update({ name: data.name }).eq("id", data.id);
-    await supabaseAdmin.from("user_roles").delete().eq("user_id", data.id);
-    await supabaseAdmin.from("user_roles").insert({ user_id: data.id, role: data.role });
+    const { error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .update({ name: data.name })
+      .eq("id", data.id);
+    if (profileError) throw new Error(profileError.message);
+    const { error: deleteError } = await supabaseAdmin
+      .from("user_roles")
+      .delete()
+      .eq("user_id", data.id);
+    if (deleteError) throw new Error(deleteError.message);
+    const { error: roleError } = await supabaseAdmin
+      .from("user_roles")
+      .insert({ user_id: data.id, role: data.role });
+    if (roleError) throw new Error(roleError.message);
     if (data.password && data.password.length >= 6) {
-      await supabaseAdmin.auth.admin.updateUserById(data.id, { password: data.password });
+      const { error: passError } = await supabaseAdmin.auth.admin.updateUserById(data.id, {
+        password: data.password,
+      });
+      if (passError) throw new Error(passError.message);
     }
     return { ok: true };
   });

@@ -1,21 +1,43 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/lib/useAuth";
+import { useAuth, roleHome } from "@/lib/useAuth";
 import { AppShell, StatCard, StatusBadge } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Package, Truck, MapPin, Timer, CheckCircle2 } from "lucide-react";
 import { optimizeRoute, type TravelEdge } from "@/lib/routeOptimizer";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { DeliveryMap } from "@/components/DeliveryMap";
 
 export const Route = createFileRoute("/_authenticated/courier/")({
   component: CourierDashboard,
 });
 
+// ---------------------------------------------------------------------------
+// CourierDashboard
+// ---------------------------------------------------------------------------
 function CourierDashboard() {
   const auth = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
+
+  useEffect(() => {
+    if (!auth.loading && auth.role !== "COURIER") {
+      navigate({ to: roleHome(auth.role) });
+    }
+  }, [auth.loading, auth.role, navigate]);
 
   const { data: available } = useQuery({
     queryKey: ["available-orders"],
@@ -73,13 +95,17 @@ function CourierDashboard() {
   }, [travel, accepted]);
 
   const accept = async (orderId: string) => {
-    const { error } = await supabase
+    const { error, count } = await supabase
       .from("orders")
-      .update({ assigned_courier_id: auth.userId, status: "ASSIGNED" })
+      .update({ assigned_courier_id: auth.userId, status: "ASSIGNED" }, { count: "exact" })
       .eq("id", orderId)
       .eq("status", "PENDING");
-    if (error) toast.error(error.message);
-    else {
+    if (error) {
+      toast.error(error.message);
+    } else if (count === 0) {
+      toast.error("Order was already taken — refreshing list");
+      qc.invalidateQueries({ queryKey: ["available-orders"] });
+    } else {
       toast.success("Order accepted");
       qc.invalidateQueries({ queryKey: ["available-orders"] });
       qc.invalidateQueries({ queryKey: ["my-orders"] });
@@ -116,26 +142,39 @@ function CourierDashboard() {
   return (
     <AppShell title="Courier Dashboard">
       <div className="space-y-6">
+
+        {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatCard label="Available Orders" value={available?.length ?? 0} icon={Package} tone="warning" />
           <StatCard label="Accepted" value={accepted.length} icon={Truck} tone="primary" />
           <StatCard label="Completed" value={completed.length} icon={CheckCircle2} tone="success" />
         </div>
 
-        <section className="bg-card border rounded-lg p-5">
-          <h2 className="font-semibold mb-3 flex items-center gap-2">
-            <MapPin className="h-4 w-4" /> Optimized Delivery Route
+        {/* Map + Route */}
+        <section className="bg-card border rounded-lg p-5 space-y-5">
+          <h2 className="font-semibold flex items-center gap-2">
+            <MapPin className="h-4 w-4" /> Delivery Map &amp; Optimized Route
           </h2>
+
+          {/* Interactive map (Leaflet + OpenStreetMap — no API key required) */}
+          <DeliveryMap
+            accepted={accepted}
+            available={available ?? []}
+            optimized={optimized}
+          />
+
+          {/* Text stop list */}
           {optimized && optimized.stops.length > 1 ? (
-            <div>
+            <div className="pt-1 border-t">
+              <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wide font-medium">Stop sequence</p>
               <ol className="space-y-2">
                 {optimized.stops.map((s, i) => (
                   <li key={i} className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold">
+                    <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold shrink-0">
                       {i + 1}
                     </div>
-                    <div className="flex-1">
-                      <div className="text-sm font-medium">{s.label}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{s.label}</div>
                       {i > 0 && (
                         <div className="text-xs text-muted-foreground">
                           {s.travelFromPrev} min from previous stop
@@ -145,19 +184,20 @@ function CourierDashboard() {
                   </li>
                 ))}
               </ol>
-              <div className="mt-4 flex items-center gap-2 text-sm">
+              <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
                 <Timer className="h-4 w-4 text-primary" />
-                <span className="font-medium">Total estimated travel:</span>
-                <span>{optimized.totalMinutes} minutes</span>
+                <span className="font-medium text-foreground">Total estimated travel:</span>
+                <span>{optimized.totalMinutes} min</span>
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              Accept one or more deliveries to see the optimized sequence.
+            <p className="text-sm text-muted-foreground pt-1 border-t">
+              Accept one or more deliveries to see the optimized route.
             </p>
           )}
         </section>
 
+        {/* Available orders */}
         <section>
           <h2 className="font-semibold mb-3">Available Pending Orders</h2>
           <div className="bg-card border rounded-lg overflow-x-auto">
@@ -192,6 +232,7 @@ function CourierDashboard() {
           </div>
         </section>
 
+        {/* My orders */}
         <section>
           <h2 className="font-semibold mb-3">My Accepted Orders</h2>
           <div className="bg-card border rounded-lg overflow-x-auto">
@@ -221,13 +262,7 @@ function CourierDashboard() {
                           <Button size="sm" variant="outline" onClick={() => complete(o.id)}>
                             Mark completed
                           </Button>
-                          <Button size="sm" variant="ghost" className="text-destructive" onClick={() => {
-                            if (window.confirm("Cancel this delivery assignment?")) {
-                              cancelAcceptance(o.id);
-                            }
-                          }}>
-                            Cancel
-                          </Button>
+                          <CancelDeliveryDialog onConfirm={() => cancelAcceptance(o.id)} />
                         </>
                       )}
                     </td>
@@ -240,7 +275,33 @@ function CourierDashboard() {
             </table>
           </div>
         </section>
+
       </div>
     </AppShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CancelDeliveryDialog
+// ---------------------------------------------------------------------------
+function CancelDeliveryDialog({ onConfirm }: { onConfirm: () => void }) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button size="sm" variant="ghost" className="text-destructive">Cancel</Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Cancel delivery assignment?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This releases the order back to the pending pool so another courier can pick it up.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Go Back</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>Cancel Assignment</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, StatCard, StatusBadge } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -45,9 +45,13 @@ import {
 } from "lucide-react";
 import {
   adminListUsers,
+  adminCreateUser,
+  adminUpdateUser,
+  adminDeleteUser,
   adminAssignCourier,
   adminListCouriers,
 } from "@/lib/admin.functions";
+import { useAuth, roleHome } from "@/lib/useAuth";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
@@ -57,28 +61,23 @@ export const Route = createFileRoute("/_authenticated/admin/")({
 type Role = "MERCHANT" | "COURIER" | "ADMIN";
 
 function AdminDashboard() {
+  const auth = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
+
+  // Redirect non-admins to their own home
+  useEffect(() => {
+    if (!auth.loading && auth.role !== "ADMIN") {
+      navigate({ to: roleHome(auth.role) });
+    }
+  }, [auth.loading, auth.role, navigate]);
+
   const listUsers = useServerFn(adminListUsers);
   const listCouriers = useServerFn(adminListCouriers);
   const assignCourier = useServerFn(adminAssignCourier);
-
-  const executeUserMutation = async (method: "POST" | "PUT" | "DELETE", payload: any) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    const res = await fetch("/api/admin/users", {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || "Request failed");
-    }
-    return await res.json();
-  };
+  const createUser = useServerFn(adminCreateUser);
+  const updateUser = useServerFn(adminUpdateUser);
+  const deleteUser = useServerFn(adminDeleteUser);
 
   // Queries
   const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: () => listUsers() });
@@ -99,10 +98,10 @@ function AdminDashboard() {
     queryFn: () => listCouriers(),
   });
 
-  // Extract profiles for displaying names in orders table
+  // Stable sorted key so ID reordering doesn't create duplicate cache entries
   const merchantIds = Array.from(new Set((orders ?? []).map((o: any) => o.merchant_id))).filter(Boolean);
   const courierIds = Array.from(new Set((orders ?? []).map((o: any) => o.assigned_courier_id).filter(Boolean)));
-  const allIds = Array.from(new Set([...merchantIds, ...courierIds]));
+  const allIds = Array.from(new Set([...merchantIds, ...courierIds])).sort();
 
   const { data: profiles } = useQuery({
     queryKey: ["profiles-for-orders", allIds.join(",")],
@@ -185,7 +184,7 @@ function AdminDashboard() {
               <CreateUserDialog
                 onCreate={async (payload) => {
                   try {
-                    await executeUserMutation("POST", payload);
+                    await createUser({ data: payload });
                     toast.success("User created");
                     setOpenCreate(false);
                     refreshUsers();
@@ -248,7 +247,7 @@ function AdminDashboard() {
                             <AlertDialogAction
                               onClick={async () => {
                                 try {
-                                  await executeUserMutation("DELETE", { id: u.id });
+                                  await deleteUser({ data: { id: u.id } });
                                   toast.success("User deleted");
                                   refreshUsers();
                                 } catch (e: any) {
@@ -351,7 +350,7 @@ function AdminDashboard() {
             initial={editing}
             onSave={async (payload) => {
               try {
-                await executeUserMutation("PUT", payload);
+                await updateUser({ data: payload });
                 toast.success("Updated");
                 setEditing(null);
                 refreshUsers();
@@ -379,9 +378,7 @@ function CreateUserDialog({
 
   const handleCreate = () => {
     const newErrors: typeof errors = {};
-    if (!name.trim()) {
-      newErrors.name = "required";
-    }
+    if (!name.trim()) newErrors.name = "required";
     if (!email.trim()) {
       newErrors.email = "required";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -458,12 +455,8 @@ function EditUserDialog({
 
   const handleSave = () => {
     const newErrors: typeof errors = {};
-    if (!name.trim()) {
-      newErrors.name = "required";
-    }
-    if (password && password.length < 6) {
-      newErrors.password = "must be at least 6 characters";
-    }
+    if (!name.trim()) newErrors.name = "required";
+    if (password && password.length < 6) newErrors.password = "must be at least 6 characters";
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -524,4 +517,3 @@ function Field({ label, error, children }: { label: string; error?: string; chil
     </div>
   );
 }
-

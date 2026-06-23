@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/lib/useAuth";
+import { useAuth, roleHome } from "@/lib/useAuth";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -24,6 +24,13 @@ function NewOrder() {
   const auth = useAuth();
   const navigate = useNavigate();
   const [customerId, setCustomerId] = useState("");
+
+  // Redirect non-merchants to their correct home
+  useEffect(() => {
+    if (!auth.loading && auth.role !== "MERCHANT") {
+      navigate({ to: roleHome(auth.role) });
+    }
+  }, [auth.loading, auth.role, navigate]);
   const [dueTime, setDueTime] = useState("");
   const [busy, setBusy] = useState(false);
 

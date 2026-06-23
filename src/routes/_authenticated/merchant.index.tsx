@@ -1,7 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/lib/useAuth";
+import { useAuth, roleHome } from "@/lib/useAuth";
 import { AppShell, StatCard, StatusBadge } from "@/components/AppShell";
 import { ClipboardList, Clock, CheckCircle2, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,15 @@ export const Route = createFileRoute("/_authenticated/merchant/")({
 
 function MerchantDashboard() {
   const auth = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
+
+  // Redirect non-merchants to their correct home
+  useEffect(() => {
+    if (!auth.loading && auth.role !== "MERCHANT") {
+      navigate({ to: roleHome(auth.role) });
+    }
+  }, [auth.loading, auth.role, navigate]);
 
   const { data: orders } = useQuery({
     queryKey: ["merchant-orders", auth.userId],
