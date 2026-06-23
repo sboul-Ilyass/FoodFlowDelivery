@@ -21,21 +21,21 @@ export function AppShell({ children, title }: { children: ReactNode; title: stri
   return (
     <div className="flex min-h-screen w-full bg-background">
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 border-b bg-card flex items-center justify-between px-6">
+        <header className="h-16 border-b bg-card flex items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2">
             <UtensilsCrossed className="h-6 w-6 text-primary" />
-            <span className="font-semibold tracking-tight text-lg mr-4">FoodFlow</span>
-            <span className="text-muted-foreground">|</span>
-            <h1 className="text-lg font-medium text-foreground ml-4">{title}</h1>
+            <span className="font-semibold tracking-tight text-lg mr-2 hidden sm:inline">FoodFlow</span>
+            <span className="text-muted-foreground hidden sm:inline">|</span>
+            <h1 className="text-base sm:text-lg font-medium text-foreground sm:ml-2 truncate max-w-[150px] xs:max-w-[220px] sm:max-w-none">{title}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground hidden sm:inline">{auth.email}</span>
+            <span className="text-sm text-muted-foreground hidden md:inline">{auth.email}</span>
             <Button variant="outline" size="sm" onClick={signOut}>
-              <LogOut className="h-4 w-4 mr-2" /> Sign out
+              <LogOut className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Sign out</span>
             </Button>
           </div>
         </header>
-        <main className="flex-1 p-6 overflow-auto">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 overflow-auto">{children}</main>
       </div>
     </div>
   );

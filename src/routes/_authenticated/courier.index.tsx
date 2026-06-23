@@ -160,7 +160,7 @@ function CourierDashboard() {
 
         <section>
           <h2 className="font-semibold mb-3">Available Pending Orders</h2>
-          <div className="bg-card border rounded-lg overflow-hidden">
+          <div className="bg-card border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-xs uppercase text-muted-foreground text-left">
                 <tr>
@@ -194,7 +194,7 @@ function CourierDashboard() {
 
         <section>
           <h2 className="font-semibold mb-3">My Accepted Orders</h2>
-          <div className="bg-card border rounded-lg overflow-hidden">
+          <div className="bg-card border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-xs uppercase text-muted-foreground text-left">
                 <tr>
