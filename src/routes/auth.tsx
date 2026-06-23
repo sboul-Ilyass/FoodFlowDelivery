@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
-import { seedDemoUsers, autoSeedIfEmpty } from "@/lib/seed.functions";
+import { autoSeedIfEmpty } from "@/lib/seed.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,12 +18,10 @@ export const Route = createFileRoute("/auth")({
 function AuthPage() {
   const navigate = useNavigate();
   const auth = useAuth();
-  const seed = useServerFn(seedDemoUsers);
   const autoSeed = useServerFn(autoSeedIfEmpty);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [seeding, setSeeding] = useState(false);
 
   useEffect(() => {
     const runAutoSeed = async () => {
@@ -51,25 +49,6 @@ function AuthPage() {
     setBusy(false);
     if (error) toast.error(error.message);
     else toast.success("Signed in");
-  };
-
-  const seedDemo = async () => {
-    setSeeding(true);
-    try {
-      const res = await seed();
-      toast.success(
-        `Demo users ready (${res.results.map((r) => `${r.email}: ${r.status}`).join(", ")})`,
-      );
-    } catch (e: any) {
-      toast.error(e.message ?? "Seed failed");
-    } finally {
-      setSeeding(false);
-    }
-  };
-
-  const quick = (e: string, p: string) => {
-    setEmail(e);
-    setPassword(p);
   };
 
   return (
@@ -114,40 +93,6 @@ function AuthPage() {
             Sign in
           </Button>
         </form>
-
-        <div className="mt-6 bg-card rounded-xl border p-5">
-          <div className="text-sm font-medium mb-2">Demo accounts</div>
-          <div className="text-xs text-muted-foreground mb-3">
-            Click to fill, or initialize them on first run.
-          </div>
-          <div className="space-y-2 text-sm">
-            {[
-              ["admin@example.com", "admin123", "Administrator"],
-              ["merchant@example.com", "merchant123", "Merchant"],
-              ["courier@example.com", "courier123", "Courier"],
-            ].map(([e, p, label]) => (
-              <button
-                key={e}
-                type="button"
-                onClick={() => quick(e, p)}
-                className="w-full text-left flex justify-between rounded-md border px-3 py-2 hover:bg-accent"
-              >
-                <span className="font-medium">{label}</span>
-                <span className="text-muted-foreground">{e}</span>
-              </button>
-            ))}
-          </div>
-          <Button
-            variant="secondary"
-            className="w-full mt-3"
-            type="button"
-            onClick={seedDemo}
-            disabled={seeding}
-          >
-            {seeding && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Initialize demo accounts
-          </Button>
-        </div>
       </div>
     </div>
   );
