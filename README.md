@@ -30,7 +30,7 @@ To run this application locally for testing:
    * **Merchant**: `merchant@example.com` / `merchant123`
    * **Courier**: `courier@example.com` / `courier123`
 
-   *(If these accounts do not exist in the database, click the **"Initialize demo accounts"** button on the login page to seed them).*
+   *(These accounts are automatically seeded into the database on first run if it is empty).*
 
 ---
 
@@ -97,7 +97,7 @@ The database schema is provided as a SQL migration. On Lovable Cloud, migrations
 
 ### Demo accounts
 
-A one-click **Initialize demo accounts** button on the login page creates the three default users via the server-side admin API:
+The system automatically seeds the following three default users on first run if the database is empty:
 
 | Role          | Email                 | Password    |
 |---------------|-----------------------|-------------|
@@ -152,36 +152,6 @@ This project is built on Lovable Cloud and can be published directly from the Lo
 1. Configure Supabase environment variables in your hosting provider.
 2. Run `npm run build`.
 3. Deploy the `dist/` output (or use Cloudflare Workers via the included Nitro config).
-
----
-
-## Assumptions
-
-- Customer accounts are not implemented; customers are represented as 8 predefined addresses.
-- A single restaurant is predefined.
-- Travel times are simulated via a static `travel_times` table — no live map API.
-- Orders carry only destination + due time; no menu items, prices, or payment data.
-- Email confirmation is disabled for demo accounts to streamline first-run sign-in.
-
----
-
-## Limitations
-
-- No online payments.
-- No customer-facing ordering interface.
-- No live GPS tracking.
-- No Google Maps integration.
-- No food menu, shopping cart, or inventory management.
-
----
-
-## Future Improvements
-
-- Real map integration (Google Maps / Mapbox) with live geocoding.
-- Real-time courier tracking via Supabase Realtime.
-- Customer mobile application.
-- Delivery notifications (email / push).
-- Analytics dashboard with delivery KPIs.
 
 ---
 
