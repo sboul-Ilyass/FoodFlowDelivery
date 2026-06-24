@@ -35,7 +35,7 @@ export const adminCreateUser = createServerFn({ method: "POST" })
         email: z.string().email(),
         password: z.string().min(6),
         name: z.string().min(1),
-        role: z.enum(["MERCHANT", "COURIER", "ADMIN"]),
+        role: z.enum(["MERCHANT", "COURIER", "ADMIN", "CUSTOMER"]),
       })
       .parse(d)
   )
@@ -65,7 +65,7 @@ export const adminUpdateUser = createServerFn({ method: "POST" })
       .object({
         id: z.string().uuid(),
         name: z.string().min(1),
-        role: z.enum(["MERCHANT", "COURIER", "ADMIN"]),
+        role: z.enum(["MERCHANT", "COURIER", "ADMIN", "CUSTOMER"]),
         password: z.string().min(6).optional().or(z.literal("")),
       })
       .parse(d)

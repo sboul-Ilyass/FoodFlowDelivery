@@ -41,7 +41,7 @@ function MerchantDashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("id,due_time,status,created_at,assigned_courier_id,customer_id,customers(name,address)")
+        .select("id,due_time,status,created_at,assigned_courier_id,customer_id,delivery_address,customers(name,address),products(name)")
         .eq("merchant_id", auth.userId!)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -98,8 +98,12 @@ function MerchantDashboard() {
                 <tr key={o.id} className="border-t">
                   <td className="px-4 py-3 font-mono text-xs">{o.id.slice(0, 8)}</td>
                   <td className="px-4 py-3">
-                    <div className="font-medium">{o.customers?.name}</div>
-                    <div className="text-xs text-muted-foreground">{o.customers?.address}</div>
+                    <div className="font-medium">
+                      {o.customers?.name ?? o.delivery_address ?? "—"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {o.customers?.address ?? (o.products?.name ? `Product: ${o.products.name}` : "")}
+                    </div>
                   </td>
                   <td className="px-4 py-3">{new Date(o.due_time).toLocaleString()}</td>
                   <td className="px-4 py-3"><StatusBadge status={o.status} /></td>

@@ -3,9 +3,18 @@
 import { createServerFn } from "@tanstack/react-start";
 
 const DEMO_USERS = [
-  { email: "admin@example.com", password: "admin123", name: "System Admin", role: "ADMIN" as const },
+  { email: "admin@example.com",    password: "admin123",    name: "System Admin",  role: "ADMIN"    as const },
   { email: "merchant@example.com", password: "merchant123", name: "Demo Merchant", role: "MERCHANT" as const },
-  { email: "courier@example.com", password: "courier123", name: "Demo Courier", role: "COURIER" as const },
+  { email: "courier@example.com",  password: "courier123",  name: "Demo Courier",  role: "COURIER"  as const },
+  { email: "customer@example.com", password: "customer123", name: "Demo Customer", role: "CUSTOMER" as const },
+];
+
+const DEMO_PRODUCTS = [
+  { name: "Margherita Pizza",  description: "Classic tomato & mozzarella",                price: 12.90 },
+  { name: "Veggie Burger",     description: "Grilled veggie patty with fresh toppings",   price: 10.50 },
+  { name: "Caesar Salad",      description: "Romaine, croutons, parmesan, caesar dressing", price: 9.00 },
+  { name: "Beef Tacos (x3)",   description: "Seasoned beef, pico de gallo, lime crema",   price: 11.00 },
+  { name: "Chocolate Fondant", description: "Warm chocolate cake with vanilla ice cream",  price: 7.50 },
 ];
 
 export const seedDemoUsers = createServerFn({ method: "POST" }).handler(async () => {
@@ -39,6 +48,21 @@ export const seedDemoUsers = createServerFn({ method: "POST" }).handler(async ()
       results.push({ email: u.email, status: existing ? "exists" : "created" });
     }
   }
+
+  // Seed products for the demo merchant if none exist yet
+  const { count: productCount } = await supabaseAdmin
+    .from("products")
+    .select("*", { count: "exact", head: true });
+
+  if (productCount === 0) {
+    const merchantUser = userList?.users.find((x) => x.email === "merchant@example.com");
+    if (merchantUser) {
+      await supabaseAdmin.from("products").insert(
+        DEMO_PRODUCTS.map((p) => ({ ...p, merchant_id: merchantUser.id })),
+      );
+    }
+  }
+
   return { results };
 });
 
@@ -94,6 +118,20 @@ export const autoSeedIfEmpty = createServerFn({ method: "POST" }).handler(async 
         results.push({ email: u.email, status: existing ? "exists" : "created" });
       }
     }
+    // Seed products for the demo merchant if none exist yet
+    const { count: productCount } = await supabaseAdmin
+      .from("products")
+      .select("*", { count: "exact", head: true });
+
+    if (productCount === 0) {
+      const merchantUser = list?.users.find((x) => x.email === "merchant@example.com");
+      if (merchantUser) {
+        await supabaseAdmin.from("products").insert(
+          DEMO_PRODUCTS.map((p) => ({ ...p, merchant_id: merchantUser.id })),
+        );
+      }
+    }
+
     return { status: "seeded", results };
   }
 

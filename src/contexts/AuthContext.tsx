@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-export type Role = "ADMIN" | "MERCHANT" | "COURIER" | null;
+export type Role = "ADMIN" | "MERCHANT" | "COURIER" | "CUSTOMER" | null;
 
 export interface AuthState {
   loading: boolean;
@@ -78,5 +78,6 @@ export function roleHome(role: Role): string {
   if (role === "ADMIN") return "/admin";
   if (role === "MERCHANT") return "/merchant";
   if (role === "COURIER") return "/courier";
+  if (role === "CUSTOMER") return "/customer";
   return "/auth";
 }
