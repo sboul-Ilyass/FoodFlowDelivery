@@ -10,23 +10,26 @@ const DEMO_USERS = [
 ];
 
 const DEMO_PRODUCTS = [
-  { name: "Margherita Pizza",  description: "Classic tomato & mozzarella",                price: 12.90 },
-  { name: "Veggie Burger",     description: "Grilled veggie patty with fresh toppings",   price: 10.50 },
-  { name: "Caesar Salad",      description: "Romaine, croutons, parmesan, caesar dressing", price: 9.00 },
-  { name: "Beef Tacos (x3)",   description: "Seasoned beef, pico de gallo, lime crema",   price: 11.00 },
-  { name: "Chocolate Fondant", description: "Warm chocolate cake with vanilla ice cream",  price: 7.50 },
+  { name: "Margherita Pizza",  description: "Classic tomato & mozzarella",                  price: 12.90 },
+  { name: "Veggie Burger",     description: "Grilled veggie patty with fresh toppings",     price: 10.50 },
+  { name: "Caesar Salad",      description: "Romaine, croutons, parmesan, caesar dressing", price:  9.00 },
+  { name: "Beef Tacos (x3)",   description: "Seasoned beef, pico de gallo, lime crema",     price: 11.00 },
+  { name: "Chocolate Fondant", description: "Warm chocolate cake with vanilla ice cream",   price:  7.50 },
 ];
 
 export const seedDemoUsers = createServerFn({ method: "POST" }).handler(async () => {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const results: Array<{ email: string; status: string }> = [];
 
-  // Fetch all users once before the loop to avoid N+1 listUsers calls
   const { data: userList } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
+
+  // Track the merchant ID regardless of whether they existed or were just created
+  let merchantId: string | undefined;
 
   for (const u of DEMO_USERS) {
     const existing = userList?.users.find((x) => x.email === u.email);
     let userId = existing?.id;
+
     if (!existing) {
       const { data, error } = await supabaseAdmin.auth.admin.createUser({
         email: u.email,
@@ -40,7 +43,9 @@ export const seedDemoUsers = createServerFn({ method: "POST" }).handler(async ()
       }
       userId = data.user.id;
     }
+
     if (userId) {
+      if (u.email === "merchant@example.com") merchantId = userId;
       await supabaseAdmin.from("user_roles").upsert(
         { user_id: userId, role: u.role },
         { onConflict: "user_id,role" },
@@ -49,18 +54,15 @@ export const seedDemoUsers = createServerFn({ method: "POST" }).handler(async ()
     }
   }
 
-  // Seed products for the demo merchant if none exist yet
+  // Seed products using the tracked merchant ID (works even when merchant was just created)
   const { count: productCount } = await supabaseAdmin
     .from("products")
     .select("*", { count: "exact", head: true });
 
-  if (productCount === 0) {
-    const merchantUser = userList?.users.find((x) => x.email === "merchant@example.com");
-    if (merchantUser) {
-      await supabaseAdmin.from("products").insert(
-        DEMO_PRODUCTS.map((p) => ({ ...p, merchant_id: merchantUser.id })),
-      );
-    }
+  if (productCount === 0 && merchantId) {
+    await supabaseAdmin.from("products").insert(
+      DEMO_PRODUCTS.map((p) => ({ ...p, merchant_id: merchantId })),
+    );
   }
 
   return { results };
@@ -69,10 +71,9 @@ export const seedDemoUsers = createServerFn({ method: "POST" }).handler(async ()
 export const autoSeedIfEmpty = createServerFn({ method: "POST" }).handler(async () => {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-  // Fetch users once — reused both for the empty check and for the seed loop
   const { data: list, error: listError } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
   if (listError) {
-    console.error("Error listing users for auto-seed check:", listError);
+    console.error("Auto-seed: error listing users:", listError);
     return { status: "error", message: listError.message };
   }
 
@@ -80,60 +81,59 @@ export const autoSeedIfEmpty = createServerFn({ method: "POST" }).handler(async 
     .from("user_roles")
     .select("*", { count: "exact", head: true });
 
-  if (rolesError) {
-    console.error("Error checking user_roles count:", rolesError);
-  }
+  if (rolesError) console.error("Auto-seed: error checking user_roles:", rolesError);
 
-  const isAuthEmpty = !list?.users || list.users.length === 0;
+  const isAuthEmpty  = !list?.users || list.users.length === 0;
   const isRolesEmpty = rolesCount === 0;
 
-  if (isAuthEmpty || isRolesEmpty) {
-    console.log(`Auto-seeding triggered: isAuthEmpty=${isAuthEmpty}, isRolesEmpty=${isRolesEmpty}`);
-    const results: Array<{ email: string; status: string }> = [];
-
-    for (const u of DEMO_USERS) {
-      // Reuse the already-fetched user list — no extra listUsers calls inside the loop
-      const existing = list?.users.find((x) => x.email === u.email);
-      let userId = existing?.id;
-
-      if (!existing) {
-        const { data, error } = await supabaseAdmin.auth.admin.createUser({
-          email: u.email,
-          password: u.password,
-          email_confirm: true,
-          user_metadata: { name: u.name },
-        });
-        if (error) {
-          results.push({ email: u.email, status: `error: ${error.message}` });
-          continue;
-        }
-        userId = data.user.id;
-      }
-
-      if (userId) {
-        await supabaseAdmin.from("user_roles").upsert(
-          { user_id: userId, role: u.role },
-          { onConflict: "user_id,role" },
-        );
-        results.push({ email: u.email, status: existing ? "exists" : "created" });
-      }
-    }
-    // Seed products for the demo merchant if none exist yet
-    const { count: productCount } = await supabaseAdmin
-      .from("products")
-      .select("*", { count: "exact", head: true });
-
-    if (productCount === 0) {
-      const merchantUser = list?.users.find((x) => x.email === "merchant@example.com");
-      if (merchantUser) {
-        await supabaseAdmin.from("products").insert(
-          DEMO_PRODUCTS.map((p) => ({ ...p, merchant_id: merchantUser.id })),
-        );
-      }
-    }
-
-    return { status: "seeded", results };
+  if (!isAuthEmpty && !isRolesEmpty) {
+    return { status: "skipped", message: "Users and roles tables are not empty" };
   }
 
-  return { status: "skipped", message: "Users and roles tables are not empty" };
+  console.log(`Auto-seeding triggered: isAuthEmpty=${isAuthEmpty}, isRolesEmpty=${isRolesEmpty}`);
+  const results: Array<{ email: string; status: string }> = [];
+
+  // Track the merchant ID regardless of whether they existed or were just created
+  let merchantId: string | undefined;
+
+  for (const u of DEMO_USERS) {
+    const existing = list?.users.find((x) => x.email === u.email);
+    let userId = existing?.id;
+
+    if (!existing) {
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email: u.email,
+        password: u.password,
+        email_confirm: true,
+        user_metadata: { name: u.name },
+      });
+      if (error) {
+        results.push({ email: u.email, status: `error: ${error.message}` });
+        continue;
+      }
+      userId = data.user.id;
+    }
+
+    if (userId) {
+      if (u.email === "merchant@example.com") merchantId = userId;
+      await supabaseAdmin.from("user_roles").upsert(
+        { user_id: userId, role: u.role },
+        { onConflict: "user_id,role" },
+      );
+      results.push({ email: u.email, status: existing ? "exists" : "created" });
+    }
+  }
+
+  // Seed products using the tracked merchant ID (works even when merchant was just created)
+  const { count: productCount } = await supabaseAdmin
+    .from("products")
+    .select("*", { count: "exact", head: true });
+
+  if (productCount === 0 && merchantId) {
+    await supabaseAdmin.from("products").insert(
+      DEMO_PRODUCTS.map((p) => ({ ...p, merchant_id: merchantId })),
+    );
+  }
+
+  return { status: "seeded", results };
 });
