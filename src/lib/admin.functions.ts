@@ -29,15 +29,13 @@ export const adminListUsers = createServerFn({ method: "GET" })
 
 export const adminCreateUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        email: z.string().email(),
-        password: z.string().min(6),
-        name: z.string().min(1),
-        role: z.enum(["MERCHANT", "COURIER", "ADMIN", "CUSTOMER"]),
-      })
-      .parse(d)
+  .validator(
+    z.object({
+      email: z.string().email(),
+      password: z.string().min(6),
+      name: z.string().min(1),
+      role: z.enum(["MERCHANT", "COURIER", "ADMIN", "CUSTOMER"]),
+    })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
@@ -60,15 +58,13 @@ export const adminCreateUser = createServerFn({ method: "POST" })
 
 export const adminUpdateUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        id: z.string().uuid(),
-        name: z.string().min(1),
-        role: z.enum(["MERCHANT", "COURIER", "ADMIN", "CUSTOMER"]),
-        password: z.string().min(6).optional().or(z.literal("")),
-      })
-      .parse(d)
+  .validator(
+    z.object({
+      id: z.string().uuid(),
+      name: z.string().min(1),
+      role: z.enum(["MERCHANT", "COURIER", "ADMIN", "CUSTOMER"]),
+      password: z.string().min(6).optional().or(z.literal("")),
+    })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
@@ -98,7 +94,7 @@ export const adminUpdateUser = createServerFn({ method: "POST" })
 
 export const adminDeleteUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .validator(z.object({ id: z.string().uuid() }))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -109,7 +105,7 @@ export const adminDeleteUser = createServerFn({ method: "POST" })
 
 export const adminAssignCourier = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ orderId: z.string().uuid(), courierId: z.string().uuid().nullable() }).parse(d))
+  .validator(z.object({ orderId: z.string().uuid(), courierId: z.string().uuid().nullable() }))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
