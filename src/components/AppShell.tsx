@@ -268,14 +268,22 @@ export function StatCard({
 
 export function StatusBadge({ status }: { status: string }) {
   const cls =
-    status === "PENDING"   ? "bg-amber-100 text-amber-700 border border-amber-200"
-    : status === "ASSIGNED"  ? "bg-blue-100 text-blue-700 border border-blue-200"
-    : status === "COMPLETED" ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+    status === "PENDING"     ? "bg-amber-100 text-amber-700 border border-amber-200"
+    : status === "READY"       ? "bg-sky-100 text-sky-700 border border-sky-200"
+    : status === "IN_DELIVERY" ? "bg-blue-100 text-blue-700 border border-blue-200"
+    : status === "DELIVERED"   ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+    : status === "ASSIGNED"    ? "bg-blue-100 text-blue-700 border border-blue-200"
+    : status === "COMPLETED"   ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
     : "bg-muted text-muted-foreground border";
+
+  const label =
+    status === "IN_DELIVERY" ? "In Delivery"
+    : status === "DELIVERED"  ? "Delivered"
+    : status;
 
   return (
     <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", cls)}>
-      {status}
+      {label}
     </span>
   );
 }

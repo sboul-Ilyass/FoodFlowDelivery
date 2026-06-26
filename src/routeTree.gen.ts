@@ -23,6 +23,7 @@ import { Route as AuthenticatedCustomerOrdersRouteImport } from './routes/_authe
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
 import { Route as AuthenticatedAdminProductsRouteImport } from './routes/_authenticated/admin.products'
 import { Route as AuthenticatedAdminOrdersRouteImport } from './routes/_authenticated/admin.orders'
+import { Route as AuthenticatedCustomerRestaurantMerchantIdRouteImport } from './routes/_authenticated/customer.restaurant.$merchantId'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -101,6 +102,12 @@ const AuthenticatedAdminOrdersRoute =
     path: '/admin/orders',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedCustomerRestaurantMerchantIdRoute =
+  AuthenticatedCustomerRestaurantMerchantIdRouteImport.update({
+    id: '/customer/restaurant/$merchantId',
+    path: '/customer/restaurant/$merchantId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -116,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/courier/': typeof AuthenticatedCourierIndexRoute
   '/customer/': typeof AuthenticatedCustomerIndexRoute
   '/merchant/': typeof AuthenticatedMerchantIndexRoute
+  '/customer/restaurant/$merchantId': typeof AuthenticatedCustomerRestaurantMerchantIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -131,6 +139,7 @@ export interface FileRoutesByTo {
   '/courier': typeof AuthenticatedCourierIndexRoute
   '/customer': typeof AuthenticatedCustomerIndexRoute
   '/merchant': typeof AuthenticatedMerchantIndexRoute
+  '/customer/restaurant/$merchantId': typeof AuthenticatedCustomerRestaurantMerchantIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -148,6 +157,7 @@ export interface FileRoutesById {
   '/_authenticated/courier/': typeof AuthenticatedCourierIndexRoute
   '/_authenticated/customer/': typeof AuthenticatedCustomerIndexRoute
   '/_authenticated/merchant/': typeof AuthenticatedMerchantIndexRoute
+  '/_authenticated/customer/restaurant/$merchantId': typeof AuthenticatedCustomerRestaurantMerchantIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -165,6 +175,7 @@ export interface FileRouteTypes {
     | '/courier/'
     | '/customer/'
     | '/merchant/'
+    | '/customer/restaurant/$merchantId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -180,6 +191,7 @@ export interface FileRouteTypes {
     | '/courier'
     | '/customer'
     | '/merchant'
+    | '/customer/restaurant/$merchantId'
   id:
     | '__root__'
     | '/'
@@ -196,6 +208,7 @@ export interface FileRouteTypes {
     | '/_authenticated/courier/'
     | '/_authenticated/customer/'
     | '/_authenticated/merchant/'
+    | '/_authenticated/customer/restaurant/$merchantId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -305,6 +318,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminOrdersRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/customer/restaurant/$merchantId': {
+      id: '/_authenticated/customer/restaurant/$merchantId'
+      path: '/customer/restaurant/$merchantId'
+      fullPath: '/customer/restaurant/$merchantId'
+      preLoaderRoute: typeof AuthenticatedCustomerRestaurantMerchantIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -319,6 +339,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedCourierIndexRoute: typeof AuthenticatedCourierIndexRoute
   AuthenticatedCustomerIndexRoute: typeof AuthenticatedCustomerIndexRoute
   AuthenticatedMerchantIndexRoute: typeof AuthenticatedMerchantIndexRoute
+  AuthenticatedCustomerRestaurantMerchantIdRoute: typeof AuthenticatedCustomerRestaurantMerchantIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -332,6 +353,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCourierIndexRoute: AuthenticatedCourierIndexRoute,
   AuthenticatedCustomerIndexRoute: AuthenticatedCustomerIndexRoute,
   AuthenticatedMerchantIndexRoute: AuthenticatedMerchantIndexRoute,
+  AuthenticatedCustomerRestaurantMerchantIdRoute:
+    AuthenticatedCustomerRestaurantMerchantIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

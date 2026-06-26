@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth, roleHome } from "@/lib/useAuth";
 import { AppShell, StatCard, StatusBadge } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
-import { Package, Truck, MapPin, Timer, CheckCircle2 } from "lucide-react";
+import { Package, Truck, MapPin, Timer, CheckCircle2, AlertTriangle } from "lucide-react";
 import { optimizeRoute, type TravelEdge } from "@/lib/routeOptimizer";
 import {
   AlertDialog,
@@ -26,6 +26,53 @@ export const Route = createFileRoute("/_authenticated/courier/")({
 });
 
 // ---------------------------------------------------------------------------
+// Timeout validation
+// Returns an error string if adding candidateOrder to activeBatch would
+// cause any delivery to miss its due_time, null otherwise.
+// ---------------------------------------------------------------------------
+function checkBatchTimeout(
+  candidateOrder: any,
+  activeBatch: any[],
+  travelEdges: TravelEdge[],
+): string | null {
+  const allOrders = [...activeBatch, candidateOrder];
+  const codes = allOrders
+    .map((o: any) => o.customers?.code)
+    .filter((c): c is string => Boolean(c));
+
+  if (codes.length === 0) return null; // no predefined codes → can't validate, allow
+
+  const labels: Record<string, string> = { R: "Restaurant" };
+  for (const o of allOrders) {
+    const c = o.customers as any;
+    if (c?.code) labels[c.code] = c.name ?? c.code;
+  }
+
+  const route = optimizeRoute(codes, labels, travelEdges);
+  const now = Date.now();
+  let cumMs = 0;
+
+  for (const stop of route.stops) {
+    cumMs += stop.travelFromPrev * 60_000;
+    if (stop.code === "R") continue;
+
+    const order = allOrders.find((o: any) => o.customers?.code === stop.code);
+    if (!order) continue;
+
+    const dueMs = new Date(order.due_time).getTime();
+    const etaMs = now + cumMs;
+
+    if (etaMs > dueMs) {
+      const overMin = Math.ceil((etaMs - dueMs) / 60_000);
+      const name = (order.customers as any)?.name ?? "a customer";
+      return `Adding this order would deliver to ${name} ~${overMin} min late`;
+    }
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // CourierDashboard
 // ---------------------------------------------------------------------------
 function CourierDashboard() {
@@ -39,33 +86,63 @@ function CourierDashboard() {
     }
   }, [auth.loading, auth.role, navigate]);
 
+  // Pool of orders ready for pickup (merchant has confirmed meal is ready)
   const { data: available } = useQuery({
     queryKey: ["available-orders"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("id,due_time,status,customer_id,customers(name,address,code)")
-        .eq("status", "PENDING")
+        .select("id,due_time,status,customer_id,customer_user_id,delivery_address,customers(name,address,code)")
+        .eq("status", "READY")
         .order("due_time");
       if (error) throw error;
       return data;
     },
   });
 
+  // This courier's active batch + past deliveries
   const { data: mine } = useQuery({
     queryKey: ["my-orders", auth.userId],
     enabled: !!auth.userId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("id,due_time,status,customer_id,customers(name,address,code)")
+        .select("id,due_time,status,customer_id,customer_user_id,delivery_address,customers(name,address,code)")
         .eq("assigned_courier_id", auth.userId!)
+        .in("status", ["IN_DELIVERY", "DELIVERED"])
         .order("due_time");
       if (error) throw error;
       return data;
     },
   });
 
+  // Fetch profiles for orders placed by registered customers (customer_user_id path)
+  const customerUserIds = useMemo(() => Array.from(new Set([
+    ...(available ?? []).map((o: any) => o.customer_user_id),
+    ...(mine ?? []).map((o: any) => o.customer_user_id),
+  ].filter(Boolean))), [available, mine]);
+
+  const { data: customerProfiles } = useQuery({
+    queryKey: ["courier-customer-profiles", customerUserIds.join(",")],
+    enabled: customerUserIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id,name")
+        .in("id", customerUserIds as string[]);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Resolve display name + address for any order regardless of which customer path was used
+  const customerInfo = (o: any): { name: string; address: string } => {
+    if (o.customers?.name) return { name: o.customers.name, address: o.customers.address ?? "" };
+    const profile = (customerProfiles ?? []).find((p) => p.id === o.customer_user_id);
+    return { name: profile?.name ?? "Customer", address: o.delivery_address ?? "" };
+  };
+
+  // Predefined travel times table (from Supabase) for route optimization
   const { data: travel } = useQuery({
     queryKey: ["travel-times"],
     queryFn: async () => {
@@ -77,65 +154,79 @@ function CourierDashboard() {
     },
   });
 
-  const accepted = (mine ?? []).filter((o) => o.status === "ASSIGNED");
-  const completed = (mine ?? []).filter((o) => o.status === "COMPLETED");
+  const active    = (mine ?? []).filter((o) => o.status === "IN_DELIVERY");
+  const delivered = (mine ?? []).filter((o) => o.status === "DELIVERED");
 
+  // Pre-compute timeout block reason for each available order
+  const timeoutReasons = useMemo(() => {
+    const map = new Map<string, string | null>();
+    if (!travel) return map;
+    for (const o of available ?? []) {
+      map.set(o.id, checkBatchTimeout(o, active, travel));
+    }
+    return map;
+  }, [available, active, travel]);
+
+  // Optimized route for the active batch
   const optimized = useMemo(() => {
-    if (!travel || accepted.length === 0) return null;
+    if (!travel || active.length === 0) return null;
     const labels: Record<string, string> = { R: "Restaurant" };
     const codes: string[] = [];
-    for (const o of accepted) {
-      const c: any = o.customers;
+    for (const o of active) {
+      const c = o.customers as any;
       if (c?.code) {
         codes.push(c.code);
         labels[c.code] = `${c.name} — ${c.address}`;
       }
     }
+    if (codes.length === 0) return null;
     return optimizeRoute(codes, labels, travel);
-  }, [travel, accepted]);
+  }, [travel, active]);
 
-  const accept = async (orderId: string) => {
+  // Add an order to the batch — button is pre-disabled if timeout exceeded, but double-check here
+  const addToBatch = async (order: any) => {
     const { error, count } = await supabase
       .from("orders")
-      .update({ assigned_courier_id: auth.userId, status: "ASSIGNED" }, { count: "exact" })
-      .eq("id", orderId)
-      .eq("status", "PENDING");
+      .update({ assigned_courier_id: auth.userId, status: "IN_DELIVERY" }, { count: "exact" })
+      .eq("id", order.id)
+      .eq("status", "READY"); // Optimistic concurrency — prevents double-claiming
+
     if (error) {
       toast.error(error.message);
     } else if (count === 0) {
-      toast.error("Order was already taken — refreshing list");
+      toast.error("Order was just taken — refreshing list");
       qc.invalidateQueries({ queryKey: ["available-orders"] });
     } else {
-      toast.success("Order accepted");
+      toast.success("Order added to your batch");
       qc.invalidateQueries({ queryKey: ["available-orders"] });
-      qc.invalidateQueries({ queryKey: ["my-orders"] });
+      qc.invalidateQueries({ queryKey: ["my-orders", auth.userId] });
     }
   };
 
-  const complete = async (orderId: string) => {
+  const markDelivered = async (orderId: string) => {
     const { error } = await supabase
       .from("orders")
-      .update({ status: "COMPLETED" })
+      .update({ status: "DELIVERED" })
       .eq("id", orderId)
       .eq("assigned_courier_id", auth.userId!);
     if (error) toast.error(error.message);
     else {
-      toast.success("Marked completed");
-      qc.invalidateQueries({ queryKey: ["my-orders"] });
+      toast.success("Marked as delivered");
+      qc.invalidateQueries({ queryKey: ["my-orders", auth.userId] });
     }
   };
 
-  const cancelAcceptance = async (orderId: string) => {
+  const dropFromBatch = async (orderId: string) => {
     const { error } = await supabase
       .from("orders")
-      .update({ assigned_courier_id: null, status: "PENDING" })
+      .update({ assigned_courier_id: null, status: "READY" })
       .eq("id", orderId)
       .eq("assigned_courier_id", auth.userId!);
     if (error) toast.error(error.message);
     else {
-      toast.success("Delivery assignment cancelled");
+      toast.success("Order released back to pool");
       qc.invalidateQueries({ queryKey: ["available-orders"] });
-      qc.invalidateQueries({ queryKey: ["my-orders"] });
+      qc.invalidateQueries({ queryKey: ["my-orders", auth.userId] });
     }
   };
 
@@ -145,25 +236,23 @@ function CourierDashboard() {
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <StatCard label="Available Orders" value={available?.length ?? 0} icon={Package} tone="warning" />
-          <StatCard label="Accepted" value={accepted.length} icon={Truck} tone="primary" />
-          <StatCard label="Completed" value={completed.length} icon={CheckCircle2} tone="success" />
+          <StatCard label="Ready to Pick Up" value={available?.length ?? 0} icon={Package}       tone="warning" />
+          <StatCard label="In My Batch"       value={active.length}          icon={Truck}         tone="primary" />
+          <StatCard label="Delivered Today"   value={delivered.length}       icon={CheckCircle2}  tone="success" />
         </div>
 
-        {/* Map + Route */}
+        {/* Map + route */}
         <section className="bg-card border rounded-lg p-5 space-y-5">
           <h2 className="font-semibold flex items-center gap-2">
-            <MapPin className="h-4 w-4" /> Delivery Map &amp; Optimized Route
+            <MapPin className="h-4 w-4" /> Delivery Map &amp; Route
           </h2>
 
-          {/* Interactive map (Leaflet + OpenStreetMap — no API key required) */}
           <DeliveryMap
-            accepted={accepted}
+            active={active}
             available={available ?? []}
             optimized={optimized}
           />
 
-          {/* Text stop list */}
           {optimized && optimized.stops.length > 1 ? (
             <div className="pt-1 border-t">
               <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wide font-medium">Stop sequence</p>
@@ -192,14 +281,14 @@ function CourierDashboard() {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground pt-1 border-t">
-              Accept one or more deliveries to see the optimized route.
+              Add orders to your batch to see the optimized route.
             </p>
           )}
         </section>
 
-        {/* Available orders */}
+        {/* Available READY orders */}
         <section>
-          <h2 className="font-semibold mb-3">Available Pending Orders</h2>
+          <h2 className="font-semibold mb-3">Orders Ready for Pickup</h2>
           <div className="bg-card border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-xs uppercase text-muted-foreground text-left">
@@ -211,30 +300,47 @@ function CourierDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {(available ?? []).map((o: any) => (
-                  <tr key={o.id} className="border-t">
-                    <td className="px-4 py-3 font-mono text-xs">{o.id.slice(0, 8)}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{o.customers?.name}</div>
-                      <div className="text-xs text-muted-foreground">{o.customers?.address}</div>
-                    </td>
-                    <td className="px-4 py-3">{new Date(o.due_time).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Button size="sm" onClick={() => accept(o.id)}>Accept</Button>
+                {(available ?? []).map((o: any) => {
+                  const blockReason = timeoutReasons.get(o.id) ?? null;
+                  return (
+                    <tr key={o.id} className="border-t">
+                      <td className="px-4 py-3 font-mono text-xs">{o.id.slice(0, 8)}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{customerInfo(o).name}</div>
+                        <div className="text-xs text-muted-foreground">{customerInfo(o).address}</div>
+                      </td>
+                      <td className="px-4 py-3">{new Date(o.due_time).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div title={blockReason ?? undefined} className="inline-block">
+                          <Button
+                            size="sm"
+                            disabled={!!blockReason}
+                            onClick={() => addToBatch(o)}
+                          >
+                            {blockReason ? (
+                              <><AlertTriangle className="h-3 w-3 mr-1" /> Too late</>
+                            ) : "Add to batch"}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {(available?.length ?? 0) === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">
+                      No orders ready for pickup yet
                     </td>
                   </tr>
-                ))}
-                {available?.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">No pending orders</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </section>
 
-        {/* My orders */}
+        {/* Active batch */}
         <section>
-          <h2 className="font-semibold mb-3">My Accepted Orders</h2>
+          <h2 className="font-semibold mb-3">My Active Batch</h2>
           <div className="bg-card border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-xs uppercase text-muted-foreground text-left">
@@ -247,61 +353,85 @@ function CourierDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {(mine ?? []).map((o: any) => (
+                {active.map((o: any) => (
                   <tr key={o.id} className="border-t">
                     <td className="px-4 py-3 font-mono text-xs">{o.id.slice(0, 8)}</td>
                     <td className="px-4 py-3">
-                      <div className="font-medium">{o.customers?.name}</div>
-                      <div className="text-xs text-muted-foreground">{o.customers?.address}</div>
+                      <div className="font-medium">{customerInfo(o).name}</div>
+                      <div className="text-xs text-muted-foreground">{customerInfo(o).address}</div>
                     </td>
                     <td className="px-4 py-3">{new Date(o.due_time).toLocaleString()}</td>
                     <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
                     <td className="px-4 py-3 text-right space-x-2">
-                      {o.status === "ASSIGNED" && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => complete(o.id)}>
-                            Mark completed
-                          </Button>
-                          <CancelDeliveryDialog onConfirm={() => cancelAcceptance(o.id)} />
-                        </>
-                      )}
+                      <Button size="sm" onClick={() => markDelivered(o.id)}>
+                        Mark Delivered
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button size="sm" variant="ghost" className="text-destructive">Drop</Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Drop this order?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              The order goes back to the pool so another courier can pick it up.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Go back</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => dropFromBatch(o.id)}>Drop order</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </td>
                   </tr>
                 ))}
-                {mine?.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">No accepted orders</td></tr>
+                {active.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                      No orders in your batch — add some from the pool above
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
           </div>
         </section>
 
+        {/* Delivered today */}
+        {delivered.length > 0 && (
+          <section>
+            <h2 className="font-semibold mb-3">Delivered Today</h2>
+            <div className="bg-card border rounded-lg overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground text-left">
+                  <tr>
+                    <th className="px-4 py-3">Order</th>
+                    <th className="px-4 py-3">Customer</th>
+                    <th className="px-4 py-3">Due Time</th>
+                    <th className="px-4 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {delivered.map((o: any) => (
+                    <tr key={o.id} className="border-t">
+                      <td className="px-4 py-3 font-mono text-xs">{o.id.slice(0, 8)}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{customerInfo(o).name}</div>
+                        <div className="text-xs text-muted-foreground">{customerInfo(o).address}</div>
+                      </td>
+                      <td className="px-4 py-3">{new Date(o.due_time).toLocaleString()}</td>
+                      <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
       </div>
     </AppShell>
   );
 }
 
-// ---------------------------------------------------------------------------
-// CancelDeliveryDialog
-// ---------------------------------------------------------------------------
-function CancelDeliveryDialog({ onConfirm }: { onConfirm: () => void }) {
-  return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button size="sm" variant="ghost" className="text-destructive">Cancel</Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Cancel delivery assignment?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This releases the order back to the pending pool so another courier can pick it up.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Go Back</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>Cancel Assignment</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}

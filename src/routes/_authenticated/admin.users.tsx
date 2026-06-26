@@ -91,16 +91,14 @@ function AdminUsers() {
             <DialogTrigger asChild>
               <Button><Plus className="h-4 w-4 mr-2" /> New user</Button>
             </DialogTrigger>
+            {/* key forces state reset each time dialog opens */}
             <CreateUserDialog
+              key={openCreate ? "open" : "closed"}
               onCreate={async (payload) => {
-                try {
-                  await createUser({ data: payload });
-                  toast.success("User created");
-                  setOpenCreate(false);
-                  refresh();
-                } catch (e: any) {
-                  toast.error(e.message ?? "Failed");
-                }
+                await createUser({ data: payload });
+                toast.success("User created");
+                setOpenCreate(false);
+                refresh();
               }}
             />
           </Dialog>
@@ -210,37 +208,56 @@ function AdminUsers() {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function CreateUserDialog({ onCreate }: { onCreate: (p: { name: string; email: string; password: string; role: Role }) => void }) {
+function CreateUserDialog({
+  onCreate,
+}: {
+  onCreate: (p: { name: string; email: string; password: string; role: Role }) => Promise<void>;
+}) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("MERCHANT");
-  const [errors, setErrors] = useState<{ name?: string; email?: string; password?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; password?: string }>({});
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleCreate = () => {
-    const e: typeof errors = {};
+  const handleCreate = async () => {
+    const e: typeof fieldErrors = {};
     if (!name.trim()) e.name = "required";
     if (!email.trim()) e.email = "required";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "invalid format";
     if (!password) e.password = "required";
     else if (password.length < 6) e.password = "min 6 characters";
-    if (Object.keys(e).length) { setErrors(e); return; }
-    setErrors({});
-    onCreate({ name: name.trim(), email: email.trim(), password, role });
+    if (Object.keys(e).length) { setFieldErrors(e); return; }
+    setFieldErrors({});
+    setServerError(null);
+    setLoading(true);
+    try {
+      await onCreate({ name: name.trim(), email: email.trim(), password, role });
+    } catch (err: any) {
+      setServerError(err?.message ?? "Failed to create user");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <DialogContent>
       <DialogHeader><DialogTitle>Create user</DialogTitle></DialogHeader>
       <div className="space-y-3 py-1">
-        <Field label="Name" error={errors.name}>
-          <Input value={name} onChange={(e) => { setName(e.target.value); setErrors((p) => ({ ...p, name: undefined })); }} />
+        {serverError && (
+          <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
+            {serverError}
+          </div>
+        )}
+        <Field label="Name" error={fieldErrors.name}>
+          <Input value={name} onChange={(e) => { setName(e.target.value); setFieldErrors((p) => ({ ...p, name: undefined })); }} />
         </Field>
-        <Field label="Email" error={errors.email}>
-          <Input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErrors((p) => ({ ...p, email: undefined })); }} />
+        <Field label="Email" error={fieldErrors.email}>
+          <Input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors((p) => ({ ...p, email: undefined })); setServerError(null); }} />
         </Field>
-        <Field label="Password" error={errors.password}>
-          <Input type="password" value={password} onChange={(e) => { setPassword(e.target.value); setErrors((p) => ({ ...p, password: undefined })); }} />
+        <Field label="Password" error={fieldErrors.password}>
+          <Input type="password" value={password} onChange={(e) => { setPassword(e.target.value); setFieldErrors((p) => ({ ...p, password: undefined })); }} />
         </Field>
         <Field label="Role">
           <Select value={role} onValueChange={(v) => setRole(v as Role)}>
@@ -255,7 +272,9 @@ function CreateUserDialog({ onCreate }: { onCreate: (p: { name: string; email: s
         </Field>
       </div>
       <DialogFooter>
-        <Button onClick={handleCreate}>Create</Button>
+        <Button onClick={handleCreate} disabled={loading}>
+          {loading ? "Creating…" : "Create"}
+        </Button>
       </DialogFooter>
     </DialogContent>
   );

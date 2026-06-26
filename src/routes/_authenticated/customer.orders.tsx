@@ -1,10 +1,23 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, roleHome } from "@/lib/useAuth";
 import { AppShell, StatusBadge } from "@/components/AppShell";
 import { MapPin, ShoppingBag } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/_authenticated/customer/orders")({
   component: CustomerOrders,
@@ -13,6 +26,7 @@ export const Route = createFileRoute("/_authenticated/customer/orders")({
 function CustomerOrders() {
   const auth = useAuth();
   const navigate = useNavigate();
+  const qc = useQueryClient();
 
   useEffect(() => {
     if (!auth.loading && auth.role !== "CUSTOMER") navigate({ to: roleHome(auth.role) });
@@ -32,6 +46,17 @@ function CustomerOrders() {
     },
   });
 
+  const cancelOrder = async (id: string) => {
+    const { error } = await supabase.from("orders").delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Order cancelled");
+      qc.invalidateQueries({ queryKey: ["my-customer-orders", auth.userId] });
+    }
+  };
+
+  const cancellable = (status: string) => status === "PENDING" || status === "READY";
+
   return (
     <AppShell title="My Orders">
       <div className="max-w-4xl space-y-5">
@@ -49,6 +74,7 @@ function CustomerOrders() {
                 <th className="px-4 py-3">Delivery address</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Placed</th>
+                <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -73,11 +99,36 @@ function CustomerOrders() {
                   <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
                     {new Date(o.created_at).toLocaleString()}
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    {cancellable(o.status) && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button size="sm" variant="ghost" className="text-destructive">
+                            Cancel
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Cancel this order?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This cannot be undone. Once a courier picks up your order it can no longer be cancelled.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Keep order</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => cancelOrder(o.id)}>
+                              Cancel order
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                  </td>
                 </tr>
               ))}
               {orders?.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-16 text-center">
+                  <td colSpan={6} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-3 text-muted-foreground">
                       <ShoppingBag className="h-8 w-8 opacity-30" />
                       <p className="text-sm">No orders yet</p>

@@ -109,11 +109,30 @@ export const adminAssignCourier = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const status = data.courierId ? "ASSIGNED" : "PENDING";
-    const { error } = await supabaseAdmin
+
+    // Fetch current status so we can decide whether to flip it
+    const { data: order, error: fetchErr } = await supabaseAdmin
       .from("orders")
-      .update({ assigned_courier_id: data.courierId, status })
-      .eq("id", data.orderId);
+      .select("status")
+      .eq("id", data.orderId)
+      .single();
+    if (fetchErr) throw new Error(fetchErr.message);
+
+    const updates: Record<string, unknown> = { assigned_courier_id: data.courierId };
+
+    if (data.courierId) {
+      // Assigning a courier → move to IN_DELIVERY so the courier sees it in their batch
+      if (order.status === "PENDING" || order.status === "READY") {
+        updates.status = "IN_DELIVERY";
+      }
+    } else {
+      // Removing courier → release the order back to the READY pool
+      if (order.status === "IN_DELIVERY") {
+        updates.status = "READY";
+      }
+    }
+
+    const { error } = await supabaseAdmin.from("orders").update(updates).eq("id", data.orderId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

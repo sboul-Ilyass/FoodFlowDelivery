@@ -119,14 +119,14 @@ function AutoFitBounds({ positions }: { positions: [number, number][] }) {
 // DeliveryMap
 // ---------------------------------------------------------------------------
 interface Props {
-  accepted: any[];
+  active: any[];
   available: any[];
   optimized: OptimizedRoute | null;
 }
 
-export function DeliveryMap({ accepted, available, optimized }: Props) {
+export function DeliveryMap({ active, available, optimized }: Props) {
   const acceptedCodes = new Set(
-    accepted.map((o: any) => o.customers?.code).filter(Boolean),
+    active.map((o: any) => o.customers?.code).filter(Boolean),
   );
   const availableCodes = new Set(
     available.map((o: any) => o.customers?.code).filter(Boolean),
